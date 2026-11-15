@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<slab:originatorConfidentialityLabel xmlns:slab="urn:nato:stanag:4774:confidentialitymetadatalabel:1:0">
+  <slab:ConfidentialityInformation>
+    <slab:PolicyIdentifier>NATO</slab:PolicyIdentifier>
+    <slab:Classification>UNCLASSIFIED</slab:Classification>
+    <slab:Category Type="PERMISSIVE" TagName="Releasable to">
+      <slab:GenericValue>FIN</slab:GenericValue>
+      <slab:GenericValue>SWE</slab:GenericValue>
+    </slab:Category>
+  </slab:ConfidentialityInformation>
+  <slab:OriginatorID IDType="rfc822Name">operator@example.org</slab:OriginatorID>
+  <slab:CreationDateTime>2026-11-15T12:00:00Z</slab:CreationDateTime>
+</slab:originatorConfidentialityLabel>
