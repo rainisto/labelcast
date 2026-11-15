@@ -1,0 +1,13 @@
+[project]
+name = "labelcast"
+version = "0.1.0"
+description = "Bind a live-reloadable STANAG 4774 confidentiality label to an MPEG-TS stream (STANAG 4609 binding profile) and send it over UDP."
+requires-python = ">=3.12"
+dependencies = ["brotli"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs docker image conflabelreader:iptables-2026"]
