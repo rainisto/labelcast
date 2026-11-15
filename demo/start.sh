@@ -9,6 +9,9 @@ BUILD=0
 [ "${1:-}" = "--build" ] && BUILD=1
 
 info "checks"
+if [ "$(id -u)" = 0 ] && [ "${NO_VLC:-0}" != 1 ]; then
+    die "run as the desktop user, not root: VLC refuses to run as root and cannot open root's display session (docker is used through sudo). Or set NO_VLC=1."
+fi
 "${DOCKER[@]}" version >/dev/null 2>&1 || die "'${DOCKER[*]} version' failed; set DOCKER= or check docker access"
 [ -c "$CAMERA" ] || die "camera $CAMERA not found (set CAMERA=/dev/videoN; list with: ffmpeg -f v4l2 -list_formats all -i $CAMERA)"
 "$DEMO_DIR/stop.sh" >/dev/null 2>&1 || true

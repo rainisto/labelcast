@@ -24,6 +24,12 @@ decides on the label carried in the transport stream, not on the picture.
 
 ## Running
 
+Run the scripts as the desktop user who is logged in on the display, **not
+as root and not with `sudo`**. VLC refuses to run as root, and root cannot
+open the user's display session. The scripts call `sudo docker` themselves
+where needed. `start.sh` stops with an error if it is started as root, unless
+`NO_VLC=1` is set.
+
 ```sh
 demo/start.sh --build          # first time: builds labelcast and conflabelreader:iptables-2026
 demo/start.sh                  # later runs
