@@ -1,5 +1,6 @@
 """labelcast TOML configuration model and validation."""
 
+import math
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,8 +127,9 @@ def _label(data: dict, base_dir: Path) -> LabelConfig:
     if encoding not in ENCODINGS:
         raise ConfigError(f"label.encoding must be one of {', '.join(ENCODINGS)}")
     interval = t.get("interval", 1.0)
-    if not isinstance(interval, (int, float)) or isinstance(interval, bool) or interval < MIN_INTERVAL:
-        raise ConfigError(f"label.interval must be a number >= {MIN_INTERVAL}")
+    if (not isinstance(interval, (int, float)) or isinstance(interval, bool)
+            or not math.isfinite(interval) or interval < MIN_INTERVAL):
+        raise ConfigError(f"label.interval must be a finite number >= {MIN_INTERVAL}")
 
     field_keys = ("policy", "classification", "originator", "category")
     if "xml_file" in t:

@@ -28,8 +28,8 @@ class Injector:
         self._label_pending = False
         self._pmt_pending = False
         self._bumps = 0
-        self._emitted_fmt: bytes | None = None
         self._last_version: int | None = None
+        self._last_content: tuple | None = None  # kept over reset(): compared with the next PMT
         self._cc_pmt = ContinuityCounter()
         self._cc_label: dict[int, ContinuityCounter] = {}
         self._warned_mpts = False
@@ -147,16 +147,21 @@ class Injector:
         self._pcr_pid = src.pcr_pid
 
         fmt = self._label.fmt if self._label is not None else b"$XML"
-        if self._emitted_fmt is not None and fmt != self._emitted_fmt:
-            self._bumps += 1
-        self._emitted_fmt = fmt
+        elements = keep + [label_element(label_pid, fmt)]
+        content = (src.program_number, src.pcr_pid, src.program_info,
+                   tuple((e.stream_type, e.pid, e.es_info) for e in elements))
         version = (src.version + self._bumps) % 32
+        if content != self._last_content and version == self._last_version:
+            # Different content under the same version_number would be ignored by receivers
+            # (encoding change, or the source restarted its version numbering).
+            self._bumps += 1
+            version = (src.version + self._bumps) % 32
         if version != self._last_version:
-            self._last_version = version
             self.stats["pmt_versions"] += 1
+        self._last_version = version
+        self._last_content = content
 
-        ours = Pmt(src.program_number, version, src.pcr_pid, src.program_info,
-                   keep + [label_element(label_pid, fmt)])
+        ours = Pmt(src.program_number, version, src.pcr_pid, src.program_info, elements)
         self.pmt_seen = True
         return packetize_section(self._pmt_pid, build_pmt_section(ours), self._cc_pmt)
 

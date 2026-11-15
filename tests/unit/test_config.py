@@ -101,3 +101,9 @@ def test_overlay_invalid(source, msg):
 def test_copy_without_overlay_is_fine():
     cfg = parse_config('[source]\ntype="ffmpeg"\nargs=["-i","x","-c","copy"]\n' + REST, Path("."))
     assert cfg.source.overlay == "off"
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "+inf"])
+def test_interval_must_be_finite(value):
+    with pytest.raises(ConfigError, match="interval"):
+        parse_config(BASE + f'[label]\npolicy="NATO"\nclassification="X"\ninterval={value}', Path("."))

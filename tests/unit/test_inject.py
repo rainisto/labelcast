@@ -210,3 +210,32 @@ def test_crc_errors_counted_and_kept_over_reset():
     inj.process(pkts[0])
     inj.process(bytes(bad))
     assert inj.stats["crc_errors"] == 2
+
+
+def test_changed_pmt_content_after_restart_bumps_version():
+    """After an ffmpeg restart the source PMT version may restart from the same number with
+    different content; our PMT must still get a new version_number or receivers ignore it."""
+    from labelcast.ts import PmtElement, build_pmt_section
+    from tests.helpers import pmts_in
+    inj = Injector()
+    inj.set_label(XML_LABEL, 1.0)
+    first = b"".join(b"".join(o) for o in _feed(inj, _psi_prefix()))
+    inj.reset()
+    src = parse_pmt(first_section(DATA_DIR / "foreman_cif_klv.ts", 0x1000))
+    src.elements.append(PmtElement(0x0F, 0x103, b""))  # e.g. audio added, same source version
+    pat = packetize_section(0, first_section(DATA_DIR / "foreman_cif_klv.ts", 0), ContinuityCounter())
+    pmt = packetize_section(0x1000, build_pmt_section(src), ContinuityCounter())
+    second = b"".join(b"".join(o) for o in _feed(inj, pat + pmt))
+    v1, v2 = pmts_in(first)[0], pmts_in(second)[0]
+    assert v1.version != v2.version
+    assert [e.pid for e in v2.elements] == [0x100, 0x101, 0x103, 0x102]
+
+
+def test_unchanged_pmt_after_restart_keeps_version():
+    inj = Injector()
+    inj.set_label(XML_LABEL, 1.0)
+    first = b"".join(b"".join(o) for o in _feed(inj, _psi_prefix()))
+    inj.reset()
+    second = b"".join(b"".join(o) for o in _feed(inj, _psi_prefix()))
+    from tests.helpers import pmts_in
+    assert pmts_in(first)[0].version == pmts_in(second)[0].version
