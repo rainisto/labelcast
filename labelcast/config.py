@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SOURCE_TYPES = ("ffmpeg", "udp", "stdin")
+OVERLAY_MODES = ("off", "xml", "banner")
+COPY_OPTIONS = ("-c", "-c:v", "-codec", "-codec:v", "-vcodec")
+FILTER_OPTIONS = ("-vf", "-filter:v", "-filter_complex")
 ENCODINGS = ("xml", "brl")
 CATEGORY_TYPES = ("PERMISSIVE", "RESTRICTIVE", "INFORMATIVE")
 MIN_INTERVAL = 0.1
@@ -19,6 +22,7 @@ class SourceConfig:
     type: str
     args: tuple[str, ...] = ()
     url: str | None = None
+    overlay: str = "off"
 
 
 @dataclass(frozen=True)
@@ -87,7 +91,24 @@ def _source(data: dict) -> SourceConfig:
     if kind == "ffmpeg" and not args:
         raise ConfigError("source.args is required for type ffmpeg")
     url = _str(t, "url", "source", required=(kind == "udp"))
-    return SourceConfig(kind, tuple(args), url)
+    overlay = t.get("overlay", "off")
+    if overlay not in OVERLAY_MODES:
+        raise ConfigError(f"source.overlay must be one of {', '.join(OVERLAY_MODES)}")
+    if overlay != "off":
+        _check_overlay_args(kind, args)
+    return SourceConfig(kind, tuple(args), url, overlay)
+
+
+def _check_overlay_args(kind: str, args: list[str]) -> None:
+    """The overlay is burned in by ffmpeg, so the video must be re-encoded there."""
+    if kind != "ffmpeg":
+        raise ConfigError("source.overlay needs source.type = ffmpeg (the video must be re-encoded)")
+    for opt, value in zip(args, args[1:]):
+        if opt in COPY_OPTIONS and value == "copy":
+            raise ConfigError(f"source.overlay needs re-encoding, but source.args has '{opt} copy'")
+    for opt in FILTER_OPTIONS:
+        if opt in args:
+            raise ConfigError(f"source.overlay adds its own video filter; remove '{opt}' from source.args")
 
 
 def _output(data: dict) -> OutputConfig:

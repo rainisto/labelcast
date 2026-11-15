@@ -33,6 +33,7 @@ and `SIGHUP` forces a reload.
 | Key | Meaning |
 |---|---|
 | `source.type` | `ffmpeg` (with `args`: input and encoding options), `udp` (with `url`) or `stdin` |
+| `source.overlay` | demo visualisation burned into the picture by ffmpeg: `off` (default), `xml` (the label document, top left) or `banner` (one line such as `NATO SECRET · Releasable to: FIN`, top centre). Updates live with the label. Only for an ffmpeg source that re-encodes; receivers still filter on the label PES, not on the picture |
 | `output.url` | `udp://host:port[?ttl=N&iface=IP]` or `-` for stdout |
 | `output.label_pid` | label PID (default `0x0102`). labelcast moves it to a free PID if this one is taken |
 | `label.encoding` | `xml` or `brl` (Brotli) |

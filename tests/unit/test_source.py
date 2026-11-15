@@ -78,3 +78,9 @@ def test_ffmpeg_stall_is_restarted(caplog):
     src.close()
     assert src.restarts == 1
     assert "no data" in caplog.text
+
+
+def test_ffmpeg_command_with_video_filter():
+    src = FfmpegSource(SourceConfig("ffmpeg", args=("-i", "/dev/video0", "-c:v", "libx264")), LOG,
+                       start=False, video_filter="drawtext=textfile=/tmp/o.txt")
+    assert src.command[-5:] == ["-vf", "drawtext=textfile=/tmp/o.txt", "-f", "mpegts", "-"]

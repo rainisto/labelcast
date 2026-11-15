@@ -85,3 +85,9 @@ def test_payload_too_large_rejected(tmp_path):
     f.write_bytes(raw)
     with pytest.raises(LabelError, match="65000"):
         make_label(LabelConfig(xml_file=f), NOW)
+
+
+@pytest.mark.parametrize("enc", ["xml", "brl"])
+def test_label_keeps_plain_xml(enc):
+    lab = make_label(replace(EXAMPLE, encoding=enc), NOW)
+    assert lab.xml == build_label_xml(EXAMPLE, NOW)

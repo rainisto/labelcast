@@ -69,3 +69,35 @@ def test_missing_label_section():
 def test_load_missing_file(tmp_path):
     with pytest.raises(ConfigError, match="cannot read"):
         load_config(tmp_path / "nope.conf")
+
+
+FF = '[source]\ntype="ffmpeg"\nargs=["-f","v4l2","-i","/dev/video0","-c:v","libx264"]\n'
+REST = '[output]\nurl="-"\n[label]\npolicy="N"\nclassification="X"\n'
+
+
+def test_overlay_default_off():
+    assert parse_config(FF + REST, Path(".")).source.overlay == "off"
+
+
+@pytest.mark.parametrize("mode", ["off", "xml", "banner"])
+def test_overlay_modes_accepted(mode):
+    cfg = parse_config(FF + f'overlay="{mode}"\n' + REST, Path("."))
+    assert cfg.source.overlay == mode
+
+
+@pytest.mark.parametrize("source, msg", [
+    (FF + 'overlay="ticker"\n', "source.overlay must be one of"),
+    ('[source]\ntype="udp"\nurl="udp://0.0.0.0:5000"\noverlay="xml"\n', "ffmpeg"),
+    ('[source]\ntype="ffmpeg"\nargs=["-i","x","-c","copy"]\noverlay="xml"\n', "re-encod"),
+    ('[source]\ntype="ffmpeg"\nargs=["-i","x","-c:v","copy"]\noverlay="banner"\n', "re-encod"),
+    ('[source]\ntype="ffmpeg"\nargs=["-i","x","-c:v","libx264","-vf","scale=640:-1"]\noverlay="xml"\n', "-vf"),
+    ('[source]\ntype="ffmpeg"\nargs=["-i","x","-filter:v","hflip"]\noverlay="xml"\n', "-filter:v"),
+])
+def test_overlay_invalid(source, msg):
+    with pytest.raises(ConfigError, match=msg):
+        parse_config(source + REST, Path("."))
+
+
+def test_copy_without_overlay_is_fine():
+    cfg = parse_config('[source]\ntype="ffmpeg"\nargs=["-i","x","-c","copy"]\n' + REST, Path("."))
+    assert cfg.source.overlay == "off"

@@ -25,6 +25,7 @@ class Label:
     fmt: bytes
     payload: bytes
     summary: str
+    xml: bytes = b""  # the plain label document (payload may be Brotli-compressed)
 
 
 def build_label_xml(cfg: LabelConfig, created: datetime) -> bytes:
@@ -73,4 +74,4 @@ def make_label(cfg: LabelConfig, now: datetime) -> Label:
     payload = brotli.compress(xml) if cfg.encoding == "brl" else xml
     if len(payload) > MAX_PAYLOAD:
         raise LabelError(f"label payload is {len(payload)} bytes, limit is {MAX_PAYLOAD}")
-    return Label(cfg.encoding, FORMATS[cfg.encoding], payload, f"{what} {cfg.encoding} {len(payload)}B")
+    return Label(cfg.encoding, FORMATS[cfg.encoding], payload, f"{what} {cfg.encoding} {len(payload)}B", xml)

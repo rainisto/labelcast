@@ -31,8 +31,10 @@ class Source(Protocol):
 
 class FfmpegSource:
     def __init__(self, cfg: SourceConfig, log: logging.Logger, cmd: list[str] | None = None,
-                 start: bool = True, stall_timeout: float = STALL_TIMEOUT) -> None:
-        self.command = [*(cmd or FFMPEG_PREFIX), *cfg.args, "-f", "mpegts", "-"]
+                 start: bool = True, stall_timeout: float = STALL_TIMEOUT,
+                 video_filter: str | None = None) -> None:
+        vf = ["-vf", video_filter] if video_filter else []
+        self.command = [*(cmd or FFMPEG_PREFIX), *cfg.args, *vf, "-f", "mpegts", "-"]
         self._log = log
         self._stall_timeout = stall_timeout
         self._last_data = 0.0
@@ -181,9 +183,9 @@ class StdinSource:
         self._sel.close()
 
 
-def open_source(cfg: SourceConfig, log: logging.Logger) -> Source:
+def open_source(cfg: SourceConfig, log: logging.Logger, video_filter: str | None = None) -> Source:
     if cfg.type == "ffmpeg":
-        return FfmpegSource(cfg, log)
+        return FfmpegSource(cfg, log, video_filter=video_filter)
     if cfg.type == "udp":
         return UdpSource(cfg.url)
     return StdinSource()

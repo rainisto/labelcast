@@ -4,6 +4,7 @@ import argparse
 import logging
 import signal
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from .config import ConfigError, load_config
 from .inject import Injector
 from .label import LabelError
 from .output import open_output
+from .overlay import OverlayFile, drawtext_filter, overlay_text
 from .source import open_source
 from .ts import PacketFramer
 from .watcher import LabelWatcher
@@ -33,13 +35,22 @@ def main(argv: list[str] | None = None) -> int:
                         format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("labelcast")
 
+    overlay: OverlayFile | None = None
     try:
         config = load_config(args.config)
         watcher = LabelWatcher(args.config, config, log)
         output = open_output(config.output.url)
-        source = open_source(config.source, log)
+        video_filter = None
+        if config.source.overlay != "off":
+            # Demo visualisation only: ffmpeg burns the current label into the picture.
+            overlay = OverlayFile(Path(tempfile.mkdtemp(prefix="labelcast-")) / "overlay.txt")
+            overlay.write(overlay_text(watcher.label.xml, config.source.overlay))
+            video_filter = drawtext_filter(config.source.overlay, overlay.path)
+            log.info("overlay %s: %s", config.source.overlay, overlay.path)
+        source = open_source(config.source, log, video_filter)
     except (ConfigError, LabelError, ValueError, OSError) as exc:
         log.error("startup failed: %s", exc)
+        _remove_overlay(overlay)
         return 2
 
     log.info("label accepted: %s", watcher.label.summary)
@@ -89,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
                 next_watch = now + WATCH_PERIOD
                 if watcher.check():
                     injector.set_label(watcher.label, watcher.interval)
+                    if overlay is not None:
+                        overlay.write(overlay_text(watcher.label.xml, config.source.overlay))
             if first_data is not None and not injector.pmt_seen and now >= next_pmt_warning:
                 log.warning("no PMT found in the input yet; forwarding packets without a label")
                 next_pmt_warning = now + NO_PMT_REPEAT
@@ -98,8 +111,18 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         output.close()
         source.close()
+        _remove_overlay(overlay)
     _log_stats(log, injector, framer, source)
     return 0
+
+
+def _remove_overlay(overlay: "OverlayFile | None") -> None:
+    if overlay is not None:
+        overlay.remove()
+        try:
+            overlay.path.parent.rmdir()
+        except OSError:
+            pass
 
 
 def _log_stats(log: logging.Logger, injector: Injector, framer: PacketFramer, source) -> None:
