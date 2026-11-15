@@ -101,3 +101,7 @@ python3 -m pytest -m integration         # needs Docker and the image above (DOC
 
 The sample streams in `tests/data` come from
 [jimcavoy/ConfLabelReader](https://github.com/jimcavoy/ConfLabelReader) (MIT).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
