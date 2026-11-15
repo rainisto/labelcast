@@ -67,7 +67,7 @@ info "gateway policy: $(gateway_policy)"
 cat <<EOF
 
 Demo running.
-  $DEMO_DIR/setclass.sh RESTRICTED      # gateway closes, picture freezes within ~4 s
+  $DEMO_DIR/setclass.sh RESTRICTED      # gateway closes, picture freezes within ~1-2 s
   $DEMO_DIR/setclass.sh UNCLASSIFIED    # picture resumes
   $DEMO_DIR/setoverlay.sh banner        # off | xml | banner
   $DEMO_DIR/stop.sh

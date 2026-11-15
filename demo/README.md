@@ -53,8 +53,8 @@ Settings come from environment variables:
    easier to read from the back of the room. `demo/setoverlay.sh xml` goes
    back to the XML.
 3. `demo/setclass.sh RESTRICTED`: the label in the picture changes at once.
-   Within about 4 s the gateway sees that the labels no longer match, and
-   the picture freezes. The frozen frame shows the label that closed the
+   Within about a second the gateway sees that the labels no longer match,
+   and the picture freezes. The frozen frame shows the label that closed the
    gateway.
 4. `demo/setclass.sh UNCLASSIFIED`: the gateway opens and the picture
    resumes.

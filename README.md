@@ -90,7 +90,10 @@ docker run --rm --cap-add NET_ADMIN -p 50000:50000/udp conflabelreader:iptables-
 
 The container prints every label it receives. When it runs with
 `ConfLabelReader -r'<regex>'`, its iptables watchdog allows outbound
-traffic only while matching labels keep arriving.
+traffic only while matching labels keep arriving. A label that does not
+match blocks traffic within 250 ms. If no matching label arrives for the
+watchdog timeout (`-w<ms>`, default 3000), traffic is also blocked. Keep
+the timeout at least 2.5–3 times labelcast's `label.interval`.
 
 ## Tests
 
