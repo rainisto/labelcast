@@ -35,12 +35,17 @@ class Injector:
         self._warned_mpts = False
         self._fallback = False
         self.active_label_pid: int | None = None
-        self.stats = {"packets_in": 0, "packets_out": 0, "labels": 0, "pmt_versions": 0, "dropped": 0}
+        self.stats = {"packets_in": 0, "packets_out": 0, "labels": 0, "pmt_versions": 0, "dropped": 0,
+                      "crc_errors": 0}
+        self._crc_base = 0
+        self._pat_asm = SectionAssembler()
+        self._pmt_asm = SectionAssembler()
         self.reset()
 
     # -- public API --------------------------------------------------------
 
     def reset(self) -> None:
+        self._crc_base += self._pat_asm.crc_errors + self._pmt_asm.crc_errors
         self._pat_asm = SectionAssembler()
         self._pmt_asm = SectionAssembler()
         self._pmt_pid: int | None = None
@@ -89,6 +94,7 @@ class Injector:
         if self._label_due():
             out += self._emit_label()
         self.stats["packets_out"] += len(out)
+        self.stats["crc_errors"] = self._crc_base + self._pat_asm.crc_errors + self._pmt_asm.crc_errors
         return out
 
     # -- internals ---------------------------------------------------------
@@ -104,6 +110,7 @@ class Injector:
         pmt_pid = programs[0][1]
         if pmt_pid != self._pmt_pid:
             self._pmt_pid = pmt_pid
+            self._crc_base += self._pmt_asm.crc_errors
             self._pmt_asm = SectionAssembler()
 
     def _on_pcr(self, value: int) -> None:

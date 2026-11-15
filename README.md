@@ -48,11 +48,21 @@ and `SIGHUP` forces a reload.
 python3 -m labelcast -c examples/label.conf          # needs python3-brotli, ffmpeg
 
 docker build -t labelcast .
-docker run --rm --device /dev/video0 -v $PWD/conf:/conf labelcast
+mkdir -p conf && cp examples/label.conf conf/      # then edit conf/label.conf
+docker run --rm --network host --device /dev/video0 -v $PWD/conf:/conf labelcast
 ```
 
-Mount the config directory, not the single file. A bind-mounted file does
-not see changes from editors that save through a temp file and rename.
+- The image ships no default label: without `conf/label.conf` mounted, it
+  exits at startup.
+- `--network host` lets `output.url = "udp://127.0.0.1:…"` reach the
+  receiver on the host. Without it, the stream stays inside the container.
+  Use `--network host` for labelcast only, never for the ConfLabelReader
+  watchdog container, whose iptables commands would then change the host's
+  firewall.
+- Mount the config directory, not the single file. A bind-mounted file does
+  not see changes from editors that save through a temp file and rename.
+- ffmpeg is restarted when it exits or stays silent for 5 s, for example
+  when the camera is unplugged or an RTSP source stops sending.
 
 Other sources:
 

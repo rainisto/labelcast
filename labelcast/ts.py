@@ -40,9 +40,20 @@ class PacketFramer:
         buf += data
         out: list[bytes] = []
         while len(buf) >= PACKET_SIZE:
-            # Lookahead (next sync byte) is only used while resyncing, so a valid
-            # packet directly before garbage is not lost.
             if buf[0] == SYNC_BYTE:
+                # Confirm the packet with the next sync byte, so that a cut-off packet
+                # (which also starts with 0x47) is not passed on as a whole one.
+                if len(buf) <= PACKET_SIZE:
+                    break  # wait for one more byte (or flush() at end of input)
+                if buf[PACKET_SIZE] != SYNC_BYTE:
+                    if len(buf) < 2 * PACKET_SIZE:
+                        break  # not enough data yet to tell truncation from trailing garbage
+                    restart = self._find_restart(buf)
+                    if restart is not None:  # this packet is truncated: the real one starts here
+                        self.resyncs += 1
+                        del buf[:restart]
+                        continue
+                    # otherwise: a whole packet followed by garbage; keep the packet
                 out.append(bytes(buf[:PACKET_SIZE]))
                 del buf[:PACKET_SIZE]
                 continue
@@ -54,6 +65,24 @@ class PacketFramer:
                 break
             del buf[:start]
         return out
+
+    def flush(self) -> list[bytes]:
+        """At end of input: return the remaining whole packets without lookahead."""
+        buf = self._buf
+        out = []
+        while len(buf) >= PACKET_SIZE and buf[0] == SYNC_BYTE:
+            out.append(bytes(buf[:PACKET_SIZE]))
+            del buf[:PACKET_SIZE]
+        buf.clear()
+        return out
+
+    @staticmethod
+    def _find_restart(buf: bytearray) -> int | None:
+        """Offset 1..187 where two consecutive sync bytes prove a packet boundary."""
+        for k in range(1, PACKET_SIZE):
+            if buf[k] == SYNC_BYTE and buf[k + PACKET_SIZE] == SYNC_BYTE:
+                return k
+        return None
 
     @staticmethod
     def _find_sync(buf: bytearray) -> int | None:

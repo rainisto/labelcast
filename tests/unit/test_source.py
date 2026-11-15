@@ -67,3 +67,14 @@ def test_ffmpeg_command_line():
     src = FfmpegSource(SourceConfig("ffmpeg", args=("-i", "/dev/video0")), LOG, start=False)
     assert src.command == ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-i", "/dev/video0",
                            "-f", "mpegts", "-"]
+
+
+def test_ffmpeg_stall_is_restarted(caplog):
+    fake = ["python3", "-c", "import sys, time; sys.stdout.buffer.write(b'G'*188); sys.stdout.flush(); time.sleep(30)"]
+    src = FfmpegSource(SourceConfig("ffmpeg", args=()), LOG, cmd=fake, stall_timeout=1.0)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 4.0 and src.restarts < 1:
+        src.read(0.05)
+    src.close()
+    assert src.restarts == 1
+    assert "no data" in caplog.text

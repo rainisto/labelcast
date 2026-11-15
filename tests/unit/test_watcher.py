@@ -118,3 +118,32 @@ def test_request_reload_forces(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         assert w.check() is True
     assert "label accepted" in caplog.text
+
+
+def test_file_changing_during_read_is_retried(tmp_path, monkeypatch):
+    import labelcast.watcher as watcher_mod
+    conf, w = _make(tmp_path)
+    full = CONF.format(cls="SECRET", url="-") + '[[label.category]]\ntag_name="Releasable to"\ntype="PERMISSIVE"\nvalues=["FIN"]\n'
+    _write(conf, CONF.format(cls="SECRET", url="-"))  # valid but incomplete: category not written yet
+    real_load = watcher_mod.load_config
+
+    def load_while_writer_finishes(path):
+        cfg = real_load(path)
+        _write(conf, full)  # the writer completes the file after our read
+        return cfg
+
+    monkeypatch.setattr(watcher_mod, "load_config", load_while_writer_finishes)
+    assert w.check() is False          # partial read must not be published
+    monkeypatch.setattr(watcher_mod, "load_config", real_load)
+    assert w.check() is True
+    assert b"Releasable to" in w.label.payload
+
+
+def test_rejected_switch_to_xml_file_recovers(tmp_path):
+    conf, w = _make(tmp_path)
+    _write(conf, XML_CONF)             # label.xml does not exist yet → rejected
+    assert w.check() is False
+    xml = tmp_path / "label.xml"
+    _write(xml, (ROOT / "examples" / "label.xml").read_text().replace("UNCLASSIFIED", "RESTRICTED"))
+    assert w.check() is True
+    assert b"RESTRICTED" in w.label.payload

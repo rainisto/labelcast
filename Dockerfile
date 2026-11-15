@@ -6,8 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY labelcast /app/labelcast
-# Default config; mount your own directory over /conf to edit it while running.
-COPY examples /conf
+# No default label on purpose: without a mounted /conf/label.conf the container
+# exits at startup instead of streaming video under an example classification.
+# Mount the config directory: -v $PWD/conf:/conf
 
 ENTRYPOINT ["python3", "-m", "labelcast"]
 CMD ["-c", "/conf/label.conf"]

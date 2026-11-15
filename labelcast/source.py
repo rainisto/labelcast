@@ -18,6 +18,7 @@ FFMPEG_PREFIX = ["ffmpeg", "-hide_banner", "-loglevel", "warning"]
 BACKOFF_START = 1.0
 BACKOFF_MAX = 10.0
 HEALTHY_AFTER = 10.0
+STALL_TIMEOUT = 5.0
 READ_SIZE = 65536
 
 
@@ -30,9 +31,11 @@ class Source(Protocol):
 
 class FfmpegSource:
     def __init__(self, cfg: SourceConfig, log: logging.Logger, cmd: list[str] | None = None,
-                 start: bool = True) -> None:
+                 start: bool = True, stall_timeout: float = STALL_TIMEOUT) -> None:
         self.command = [*(cmd or FFMPEG_PREFIX), *cfg.args, "-f", "mpegts", "-"]
         self._log = log
+        self._stall_timeout = stall_timeout
+        self._last_data = 0.0
         self.restarts = 0
         self._backoff = BACKOFF_START
         self._proc: subprocess.Popen | None = None
@@ -50,6 +53,7 @@ class FfmpegSource:
         self._sel.register(self._proc.stdout, selectors.EVENT_READ, "out")
         self._sel.register(self._proc.stderr, selectors.EVENT_READ, "err")
         self._first_data = None
+        self._last_data = time.monotonic()
 
     def read(self, timeout: float) -> bytes:
         if self._proc is None:
@@ -68,12 +72,27 @@ class FfmpegSource:
                     self._sel.unregister(key.fileobj)
             elif chunk:
                 data += chunk
+                self._last_data = time.monotonic()
                 if self._first_data is None:
-                    self._first_data = time.monotonic()
+                    self._first_data = self._last_data
             else:
                 self._on_exit()
-                break
+                return data
+        if self._proc is not None and time.monotonic() - self._last_data > self._stall_timeout:
+            # e.g. an RTSP source that stopped sending or a blocked camera driver: ffmpeg stays
+            # alive but silent, so restart it instead of waiting forever.
+            self._log.warning("no data from ffmpeg for %.0f s; restarting it", self._stall_timeout)
+            self._terminate()
+            self._on_exit()
         return data
+
+    def _terminate(self) -> None:
+        self._proc.terminate()
+        try:
+            self._proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+            self._proc.wait()
 
     def _log_stderr(self, chunk: bytes) -> None:
         self._stderr_buf += chunk
@@ -105,12 +124,7 @@ class FfmpegSource:
 
     def close(self) -> None:
         if self._proc is not None:
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-                self._proc.wait()
+            self._terminate()
             self._proc = None
         self._sel.close()
 

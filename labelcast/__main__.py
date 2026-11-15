@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 data = source.read(READ_TIMEOUT)
             except EOFError:
+                for pkt in framer.flush():
+                    output.write(injector.process(pkt))
                 break
             now = time.monotonic()
             if source.restarts != restarts_seen:
@@ -102,8 +104,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def _log_stats(log: logging.Logger, injector: Injector, framer: PacketFramer, source) -> None:
     s = injector.stats
-    log.info("stats: packets in %d out %d, labels %d, dropped %d, resyncs %d, source restarts %d",
-             s["packets_in"], s["packets_out"], s["labels"], s["dropped"], framer.resyncs, source.restarts)
+    log.info("stats: packets in %d out %d, labels %d, dropped %d, resyncs %d, PSI CRC errors %d, "
+             "source restarts %d", s["packets_in"], s["packets_out"], s["labels"], s["dropped"],
+             framer.resyncs, s["crc_errors"], source.restarts)
 
 
 if __name__ == "__main__":

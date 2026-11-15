@@ -25,6 +25,9 @@ class LabelWatcher:
         self._reload_requested = False
         self.label: Label = make_label(config.label, now())  # LabelError propagates: startup must fail
         self.interval: float = config.label.interval
+        # xml_file of the last config that parsed, accepted or not: a rejected switch to
+        # xml_file mode must still notice when that file is created or fixed.
+        self._watched_xml: Path | None = config.label.xml_file
         self._signature = self._stat()
 
     def request_reload(self) -> None:
@@ -36,35 +39,50 @@ class LabelWatcher:
             return False
         if signature == self._signature and not self._reload_requested:
             return False
-        self._signature = signature
         self._reload_requested = False
         try:
             config = load_config(self._path)
+        except ConfigError as exc:
+            self._reject(exc, signature)
+            return False
+        self._watched_xml = config.label.xml_file
+        before = self._stat()  # now includes the (possibly new) xml_file
+        try:
             label = make_label(config.label, self._now())
-        except (ConfigError, LabelError) as exc:
-            self._log.error("label change rejected: %s", exc)
+        except LabelError as exc:
+            self._reject(exc, before)
+            return False
+        after = self._stat()
+        if after != before or before[0] != signature[0]:
+            # A file changed while we were reading it (in-place save in progress):
+            # do not publish what may be a partial read; read again on the next tick.
+            self._signature = None
+            self._log.debug("config changed during reload; retrying")
             return False
         if config.source != self._initial.source or config.output != self._initial.output:
             self._log.warning("[source]/[output] changed; restart labelcast to apply (still using old values)")
         self._config = config
         self.label = label
         self.interval = config.label.interval
-        self._signature = self._stat() or signature
+        self._signature = after
         self._log.info("label accepted: %s", label.summary)
         return True
 
+    def _reject(self, exc: Exception, signature: tuple | None) -> None:
+        self._log.error("label change rejected: %s", exc)
+        self._signature = signature  # report a broken save once, not every second
+
     def _stat(self) -> tuple | None:
-        paths = [self._path]
-        if self._config.label.xml_file is not None:
-            paths.append(self._config.label.xml_file)
-        sig = []
-        for p in paths:
-            try:
-                st = os.stat(p)
-            except OSError:
-                if p == self._path:
-                    return None
-                sig.append(None)
-                continue
-            sig.append((st.st_mtime_ns, st.st_size, st.st_ino))
-        return tuple(sig)
+        conf = self._file_sig(self._path)
+        if conf is None:
+            return None
+        xml = self._file_sig(self._watched_xml) if self._watched_xml is not None else None
+        return conf, xml
+
+    @staticmethod
+    def _file_sig(path: Path) -> tuple | None:
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        return st.st_mtime_ns, st.st_size, st.st_ino

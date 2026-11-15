@@ -196,3 +196,17 @@ def test_rebuilt_pmt_keeps_source_fields(data_dir):
     assert (ours.program_number, ours.pcr_pid, ours.program_info) == (src.program_number, src.pcr_pid, src.program_info)
     assert ours.elements[:2] == src.elements
     assert build_pmt_section(ours)  # round-trips
+
+
+def test_crc_errors_counted_and_kept_over_reset():
+    pkts = _psi_prefix()
+    bad = bytearray(pkts[1])  # PMT packet
+    bad[10] ^= 0xFF
+    inj = Injector()
+    inj.process(pkts[0])
+    inj.process(bytes(bad))
+    assert inj.stats["crc_errors"] == 1
+    inj.reset()
+    inj.process(pkts[0])
+    inj.process(bytes(bad))
+    assert inj.stats["crc_errors"] == 2

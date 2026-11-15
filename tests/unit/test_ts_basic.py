@@ -43,6 +43,7 @@ def test_framer_split_chunks(data_dir):
     raw = (data_dir / "foreman_cif_klv.ts").read_bytes()
     f = PacketFramer()
     out = [p for i in range(0, len(raw), 1000) for p in f.feed(raw[i:i + 1000])]
+    out += f.flush()
     assert b"".join(out) == raw
     assert f.resyncs == 0
 
@@ -51,6 +52,7 @@ def test_framer_resyncs_after_garbage(data_dir):
     raw = (data_dir / "foreman_cif_klv.ts").read_bytes()[:PACKET_SIZE * 10]
     f = PacketFramer()
     out = f.feed(raw[:PACKET_SIZE * 3] + b"\x00\x47\x13" + raw[PACKET_SIZE * 3:])
+    out += f.flush()
     assert out == _packets(raw)
     assert f.resyncs == 1
 
@@ -99,3 +101,33 @@ def test_pcr_extraction(data_dir):
     assert found and found[0] > 0
     assert found == sorted(found)
     assert pcr(packets[0]) is None
+
+
+def test_framer_truncated_packet_is_dropped(data_dir):
+    raw = (data_dir / "foreman_cif_klv.ts").read_bytes()[:PACKET_SIZE * 10]
+    good = _packets(raw)
+    truncated = good[5][:100]  # cut-off packet that still starts with 0x47
+    f = PacketFramer()
+    out = f.feed(b"".join(good[:3]) + truncated + b"".join(good[3:]))
+    out += f.flush()
+    assert out == good
+    assert f.resyncs == 1
+
+
+def test_framer_truncated_datagram_in_chunks(data_dir):
+    raw = (data_dir / "foreman_cif_klv.ts").read_bytes()[:PACKET_SIZE * 14]
+    good = _packets(raw)
+    f = PacketFramer()
+    out = f.feed(b"".join(good[:7]))
+    out += f.feed(good[7][:150])           # truncated datagram ends mid-packet
+    out += f.feed(b"".join(good[7:]))      # next datagram is aligned again
+    out += f.flush()
+    assert out == good
+
+
+def test_framer_flush_returns_last_packet(data_dir):
+    raw = (data_dir / "foreman_cif_klv.ts").read_bytes()[:PACKET_SIZE * 2]
+    f = PacketFramer()
+    out = f.feed(raw)
+    out += f.flush()
+    assert out == _packets(raw)

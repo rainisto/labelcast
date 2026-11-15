@@ -15,7 +15,7 @@ def packets_of(ts: bytes) -> list[bytes]:
 def run(inj, path: Path) -> bytes:
     framer = PacketFramer()
     out = []
-    for pkt in framer.feed(path.read_bytes()):
+    for pkt in framer.feed(path.read_bytes()) + framer.flush():
         out += inj.process(pkt)
     return b"".join(out)
 
