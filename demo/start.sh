@@ -19,9 +19,17 @@ for port in "$IN_PORT" "$OUT_PORT"; do
 done
 
 if [ "$BUILD" = 1 ]; then
-    info "building images"
-    "${DOCKER[@]}" build -q -t "$LABELCAST_IMAGE" "$REPO_DIR" >/dev/null
-    "${DOCKER[@]}" build -q -t "$READER_IMAGE" "https://github.com/rainisto/ConfLabelReader.git#iptables-2026" >/dev/null
+    info "building images (a few minutes the first time)"
+    mkdir -p "$RUN_DIR"
+    build() {  # build <tag> <context>
+        "${DOCKER[@]}" build -t "$1" "$2" > "$RUN_DIR/build-$1.log" 2>&1 || {
+            tail -20 "$RUN_DIR/build-$1.log" >&2
+            die "building $1 failed (full log: $RUN_DIR/build-$1.log)"
+        }
+        echo "   $1 ok"
+    }
+    build "$LABELCAST_IMAGE" "$REPO_DIR"
+    build "$READER_IMAGE" "https://github.com/rainisto/ConfLabelReader.git#iptables-2026"
 fi
 for image in "$LABELCAST_IMAGE" "$READER_IMAGE"; do
     "${DOCKER[@]}" image inspect "$image" >/dev/null 2>&1 || die "image $image missing; run: $0 --build"
