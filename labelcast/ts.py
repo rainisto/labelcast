@@ -1,5 +1,8 @@
 """MPEG-2 Transport Stream primitives (ISO/IEC 13818-1). Pure functions, no I/O."""
 
+import struct
+from dataclasses import dataclass, field
+
 PACKET_SIZE = 188
 SYNC_BYTE = 0x47
 
@@ -148,3 +151,124 @@ def parse_pat(section: bytes) -> list[tuple[int, int]]:
         if number != 0:
             programs.append((number, ((section[i + 2] & 0x1F) << 8) | section[i + 3]))
     return programs
+
+
+# --- PMT -----------------------------------------------------------------
+
+LABEL_FORMATS = (b"$XML", b"$EXI", b"$BRL")
+
+
+@dataclass
+class PmtElement:
+    stream_type: int
+    pid: int
+    es_info: bytes
+
+
+@dataclass
+class Pmt:
+    program_number: int
+    version: int
+    pcr_pid: int
+    program_info: bytes
+    elements: list[PmtElement] = field(default_factory=list)
+
+
+def parse_pmt(section: bytes) -> Pmt:
+    end = 3 + (((section[1] & 0x0F) << 8) | section[2]) - 4
+    program_info_length = ((section[10] & 0x0F) << 8) | section[11]
+    pmt = Pmt(
+        program_number=(section[3] << 8) | section[4],
+        version=(section[5] >> 1) & 0x1F,
+        pcr_pid=((section[8] & 0x1F) << 8) | section[9],
+        program_info=bytes(section[12:12 + program_info_length]),
+    )
+    i = 12 + program_info_length
+    while i + 5 <= end:
+        es_len = ((section[i + 3] & 0x0F) << 8) | section[i + 4]
+        pmt.elements.append(PmtElement(
+            stream_type=section[i],
+            pid=((section[i + 1] & 0x1F) << 8) | section[i + 2],
+            es_info=bytes(section[i + 5:i + 5 + es_len]),
+        ))
+        i += 5 + es_len
+    return pmt
+
+
+def build_pmt_section(pmt: Pmt) -> bytes:
+    body = struct.pack(">HBBBHH", pmt.program_number, 0xC1 | ((pmt.version & 0x1F) << 1), 0, 0,
+                       0xE000 | pmt.pcr_pid, 0xF000 | len(pmt.program_info)) + pmt.program_info
+    for el in pmt.elements:
+        body += struct.pack(">BHH", el.stream_type, 0xE000 | el.pid, 0xF000 | len(el.es_info)) + el.es_info
+    section_length = len(body) + 4
+    head = bytes([0x02, 0xB0 | (section_length >> 8), section_length & 0xFF])
+    section = head + body
+    return section + struct.pack(">I", crc32_mpeg2(section))
+
+
+def label_element(pid: int, fmt: bytes) -> PmtElement:
+    """4774 label program element per the STANAG 4609 binding profile (Table 2)."""
+    registration = b"\x05\x08" + fmt + b"4774"
+    metadata = b"\x26\x0e\x01\x04\xff" + fmt + b"\x01\x2f\x04" + b"4774"
+    return PmtElement(0x06, pid, registration + metadata)
+
+
+def is_label_element(el: PmtElement) -> bool:
+    if el.stream_type not in (0x06, 0x15):
+        return False
+    info = el.es_info
+    i = 0
+    while i + 2 <= len(info):
+        tag, length = info[i], info[i + 1]
+        if tag == 0x05 and length >= 4 and info[i + 2:i + 6] in LABEL_FORMATS:
+            return True
+        i += 2 + length
+    return False
+
+
+# --- packetization -------------------------------------------------------
+
+class ContinuityCounter:
+    def __init__(self) -> None:
+        self._value = -1
+
+    def next(self) -> int:
+        self._value = (self._value + 1) & 0x0F
+        return self._value
+
+
+def _packetize(pid: int, data: bytes, cc: ContinuityCounter, fill_with_af: bool) -> list[bytes]:
+    packets = []
+    first = True
+    offset = 0
+    while offset < len(data) or first:
+        chunk = data[offset:offset + 184]
+        offset += len(chunk)
+        b1 = (0x40 if first else 0x00) | (pid >> 8)
+        if len(chunk) == 184 or not fill_with_af:
+            hdr = bytes([SYNC_BYTE, b1, pid & 0xFF, 0x10 | cc.next()])
+            packets.append(hdr + chunk + b"\xff" * (184 - len(chunk)))
+        else:
+            af_len = 183 - len(chunk)
+            af = bytes([af_len]) + ((b"\x00" + b"\xff" * (af_len - 1)) if af_len else b"")
+            hdr = bytes([SYNC_BYTE, b1, pid & 0xFF, 0x30 | cc.next()])
+            packets.append(hdr + af + chunk)
+        first = False
+    return packets
+
+
+def packetize_section(pid: int, section: bytes, cc: ContinuityCounter) -> list[bytes]:
+    """PSI section → TS packets: pointer_field 0, remainder filled with 0xFF."""
+    return _packetize(pid, b"\x00" + section, cc, fill_with_af=False)
+
+
+def build_label_pes(payload: bytes) -> bytes:
+    """Asynchronous label PES: private_stream_1, data_alignment + original, no PTS."""
+    if len(payload) > 65000:
+        raise ValueError(f"label payload too large: {len(payload)} > 65000 bytes")
+    return b"\x00\x00\x01\xbd" + struct.pack(">H", 3 + len(payload)) + b"\x85\x00\x00" + payload
+
+
+def packetize_pes(pid: int, pes: bytes, cc: ContinuityCounter) -> list[bytes]:
+    """PES → TS packets; the last packet is padded with adaptation-field stuffing."""
+    return _packetize(pid, pes, cc, fill_with_af=True)
