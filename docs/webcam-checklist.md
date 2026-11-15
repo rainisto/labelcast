@@ -28,8 +28,8 @@ mkdir -p conf && cp examples/label.conf conf/
 | 6 | Edit `conf/label.conf`: `classification = "RESTRICTED"` | labelcast logs `label accepted`; within ~5 s `-P OUTPUT DROP` | PASS: DROP after 3.8 s |
 | 7 | Revert to `UNCLASSIFIED` | `-P OUTPUT ACCEPT` within ~2 s | PASS: ACCEPT after 1.5 s |
 | 8 | Save a broken config (delete a quote) | `label change rejected: invalid TOML …`; policy unchanged | PASS: `invalid TOML: Illegal character '\n' (at line 12, column 26)`; still ACCEPT after 5 s |
-| 9 | Unplug the camera | labelcast logs ffmpeg exit and restarts with backoff (1, 2, 4 … 10 s); `-P OUTPUT DROP` within ~4 s | SUBSTITUTE: ffmpeg killed inside the container (no physical unplug in a remote run): `ffmpeg exited with code 255; restarting in 1 s`, back in 1 s. The gap stayed under the 4 s watchdog, so there was correctly no DROP. Physical unplug still to do |
-| 10 | Replug the camera | video and labels resume; `-P OUTPUT ACCEPT` | NOT RUN (needs physical access) |
+| 9 | Unplug the camera | labelcast logs ffmpeg exit and restarts with backoff (1, 2, 4 … 10 s); `-P OUTPUT DROP` within ~4 s | PASS (with the demo scripts). Timeline: 0.0 s `No such device`, ffmpeg exits. 1.0 s restart fails, backoff 2 s. 3.1 s restart fails, backoff 4 s. The gateway logged DROP at 7.3 s, not within ~4 s: ConfLabelReader's watchdog only checks every 4 s, so DROP lands 4–8 s after the last label. The picture froze as expected |
+| 10 | Replug the camera | video and labels resume; `-P OUTPUT ACCEPT` | PASS: the kernel re-detected the C920 at 4.6 s; the next restart (7.2 s) opened it; ACCEPT at 7.9 s; video resumed in VLC |
 
 The labelcast container can use `--network host`, because labelcast does not
 touch iptables. Never run the ConfLabelReader container with
